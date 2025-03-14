@@ -53,7 +53,7 @@ int main()
 
                                      void main()
                                      {
-                                         vec2 position = vec2(gl_VertexIndex % 2, gl_VertexIndex / 2) * 4.0 - 1;
+                                         vec2 position = vec2(gl_VertexID % 2, gl_VertexID / 2) * 4.0 - 1;
                                          outTexCoord = position * 0.5 + 0.5;
                                          gl_Position = vec4(position, 0.0, 1.0);
                                      })";
@@ -114,63 +114,24 @@ int main()
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
-    float vertices[] =
-        {
-            0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f,   // top right
-            0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,  // bottom right
-            -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, // bottom left
-            -0.5f, 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f   // top left
-        };
-
-    unsigned int indices[] = {
-        // note that we start from 0!
-        0, 1, 3, // first Triangle
-        1, 2, 3  // second Triangle
-    };
-
-    unsigned int VBO, VAO, EBO;
-    glGenBuffers(1, &EBO);
-
-    glGenBuffers(1, &VBO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    unsigned int VAO;
     glGenVertexArrays(1, &VAO);
 
     glBindVertexArray(0);
 
-
     while (!glfwWindowShouldClose(window))
     {
+
+        glfwPollEvents();
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
         glUseProgram(shaderProgram);
-
         // 在渲染循环中调用 glVertexAttribPointer
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBindVertexArray(VAO);
-
-        // position attribute
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
-        glEnableVertexAttribArray(0);
-        // color attribute
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
-        glEnableVertexAttribArray(1);
-
-        // texcoord attribute
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
-        glEnableVertexAttribArray(2);
-        
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
         glfwSwapBuffers(window);
-        glfwPollEvents();
-
     }
 
     glDeleteProgram(shaderProgram);
