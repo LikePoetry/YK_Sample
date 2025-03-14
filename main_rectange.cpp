@@ -77,10 +77,11 @@ int main()
                                         #extension GL_ARB_separate_shader_objects : enable
                                         #extension GL_ARB_shading_language_420pack : enable
                                         #extension GL_KHR_vulkan_glsl : enable
+                                        layout(location = 0) in vec2 outTexCoord;
                                        layout(location = 0) out vec4 outColor;
                                        void main()
                                        {
-                                          outColor = vec4(1.0f,0.0f,0.0f,1.0f);
+                                          outColor = vec4(outTexCoord,0.0f,1.0f);
                                        })";
 
     unsigned int fragmentShader;
