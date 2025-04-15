@@ -115,10 +115,10 @@ int main()
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
-    unsigned int VAO;
-    glGenVertexArrays(1, &VAO);
+    // unsigned int VAO;
+    // glGenVertexArrays(1, &VAO);
 
-    glBindVertexArray(0);
+    // glBindVertexArray(0);
 
     while (!glfwWindowShouldClose(window))
     {
@@ -129,7 +129,7 @@ int main()
 
         glUseProgram(shaderProgram);
         // 在渲染循环中调用 glVertexAttribPointer
-        glBindVertexArray(VAO);
+        //glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
         glfwSwapBuffers(window);
