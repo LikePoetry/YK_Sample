@@ -56,6 +56,18 @@ bool CGEOMIPMAPPING::Init(int iPatchSize)
 }
 
 //----------------------------------------------------------------------
+// Render the geomapping system
+//----------------------------------------------------------------------
+void CGEOMIPMAPPING::Render()
+{
+    int x,z;
+
+    //reset the counting variables
+    
+    
+}
+
+//----------------------------------------------------------------------
 // Shutdown the geomapping system
 //----------------------------------------------------------------------
 void CGEOMIPMAPPING::Shutdown()
