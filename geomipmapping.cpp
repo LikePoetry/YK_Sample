@@ -89,7 +89,7 @@ void CGEOMIPMAPPING::Render()
 // bMultiTex : use multitexturing or not
 // bDetail : render with a detail map or not
 //----------------------------------------------------------------------
-void CGEOMIPMAPPING::RenderPatch(int PX, int PZ, bool bMultiTex = false, bool bDetail = false)
+void CGEOMIPMAPPING::RenderPatch(int PX, int PZ, bool bMultiTex, bool bDetail)
 {
     SGEOMM_NEIGHBOR patchNeighbor;
     SGEOMM_NEIGHBOR fanNeighbor;

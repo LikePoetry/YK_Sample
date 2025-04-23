@@ -19,6 +19,7 @@ struct SGEOMM_NEIGHBOR
 class CGEOMIPMAPPING : public CTERRAIN
 {
 public:
+    CGEOMIPMAPPING() {}
     bool Init(int iPatchSize);
     void Shutdown();
 
@@ -40,7 +41,4 @@ private:
     {
         return (PZ * m_iNumPatchesPerSide + PX);
     }
-
-    CGEOMIPMAPPING(void) {}
-    ~CGEOMIPMAPPING(void) {}
 };

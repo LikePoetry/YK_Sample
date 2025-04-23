@@ -2,12 +2,6 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <vector>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include "terrain.h"
-#include "geomipmapping.h"
-
 
 class Mesh
 {
@@ -16,7 +10,7 @@ public:
     {
         this->vertices = vertices;
         this->indices = indices;
-        indices_count = indices.size();
+        indices_count= indices.size();
         // 生成 VAO、VBO 和 EBO
 
         glGenVertexArrays(1, &VAO);
@@ -25,10 +19,10 @@ public:
 
         glBindVertexArray(VAO);
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float)*vertices.size(), vertices.data(), GL_STATIC_DRAW);
 
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(float) * indices.size(), indices.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(float)*indices.size(), indices.data(), GL_STATIC_DRAW);
 
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
         glEnableVertexAttribArray(0);
@@ -60,13 +54,9 @@ const char *vertexShaderSource = R"(
 #version 330 core
 layout(location = 0) in vec3 aPos;
 
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
-
 void main()
 {
-    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    gl_Position = vec4(aPos, 1.0);
 }
 )";
 
@@ -81,142 +71,13 @@ void main()
 }
 )";
 
-// 相机类
-class Camera
-{
-public:
-    glm::vec3 position;
-    glm::vec3 front;
-    glm::vec3 up;
-    glm::vec3 right;
-    glm::vec3 worldUp;
-
-    float yaw;
-    float pitch;
-    float speed;
-    float sensitivity;
-    float zoom;
-
-    Camera(glm::vec3 startPosition, glm::vec3 startUp, float startYaw, float startPitch)
-        : position(startPosition), worldUp(startUp), yaw(startYaw), pitch(startPitch), speed(2.5f), sensitivity(0.1f), zoom(45.0f)
-    {
-        updateCameraVectors();
-    }
-
-    glm::mat4 getViewMatrix()
-    {
-        return glm::lookAt(position, position + front, up);
-    }
-
-    void processMouseMovement(float xOffset, float yOffset)
-    {
-        xOffset *= sensitivity;
-        yOffset *= sensitivity;
-
-        yaw += xOffset;
-        pitch += yOffset;
-
-        if (pitch > 89.0f)
-            pitch = 89.0f;
-        if (pitch < -89.0f)
-            pitch = -89.0f;
-
-        updateCameraVectors();
-    }
-
-    void processMouseScroll(float yOffset)
-    {
-        zoom -= yOffset;
-        if (zoom < 1.0f)
-            zoom = 1.0f;
-        if (zoom > 100.0f)
-            zoom = 100.0f;
-    }
-
-private:
-    void updateCameraVectors()
-    {
-        glm::vec3 newFront;
-        newFront.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-        newFront.y = sin(glm::radians(pitch));
-        newFront.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-        front = glm::normalize(newFront);
-
-        right = glm::normalize(glm::cross(front, worldUp));
-        up = glm::normalize(glm::cross(right, front));
-    }
-};
-
-// 全局变量
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 1.0f, 0.0f), -90.0f, 0.0f);
-bool firstMouse = true;
-float lastX = 400, lastY = 300;
-bool rightMousePressed = false;
-
-// 鼠标回调函数
-void mouseCallback(GLFWwindow *window, double xpos, double ypos)
-{
-    if (!rightMousePressed)
-        return;
-
-    if (firstMouse)
-    {
-        lastX = xpos;
-        lastY = ypos;
-        firstMouse = false;
-    }
-
-    float xOffset = xpos - lastX;
-    float yOffset = lastY - ypos; // 反转 y 坐标
-
-    lastX = xpos;
-    lastY = ypos;
-
-    camera.processMouseMovement(xOffset, yOffset);
-}
-
-// 鼠标按键回调函数
-void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
-{
-    if (button == GLFW_MOUSE_BUTTON_RIGHT)
-    {
-        if (action == GLFW_PRESS)
-        {
-            rightMousePressed = true;
-            firstMouse = true; // 重置鼠标初始位置
-        }
-        else if (action == GLFW_RELEASE)
-        {
-            rightMousePressed = false;
-        }
-    }
-}
-
-// 鼠标滚轮回调函数
-void scrollCallback(GLFWwindow *window, double xOffset, double yOffset)
-{
-    camera.processMouseScroll(static_cast<float>(yOffset));
-}
-
 void framebufferSizeCallback(GLFWwindow *window, int width, int height)
 {
     glViewport(0, 0, width, height);
 }
 
-// 高度图分辨率
-int m_iSize; // the size of the heightmap, must be a power of two
-
-
 int main()
 {
-
-    CGEOMIPMAPPING terrain;
-    terrain.m_iSize=257;
-
-    terrain.Init(17);
-    
-    terrain.Render();
-
     // 初始化 GLFW
     if (!glfwInit())
     {
@@ -228,7 +89,7 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow *window = glfwCreateWindow(800, 600, "Camera with Mouse Control", nullptr, nullptr);
+    GLFWwindow *window = glfwCreateWindow(800, 600, "Triangle with Modern OpenGL", nullptr, nullptr);
     if (!window)
     {
         std::cerr << "Failed to create GLFW window" << std::endl;
@@ -238,9 +99,6 @@ int main()
 
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
-    glfwSetCursorPosCallback(window, mouseCallback);
-    glfwSetMouseButtonCallback(window, mouseButtonCallback);
-    glfwSetScrollCallback(window, scrollCallback);
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
@@ -248,7 +106,7 @@ int main()
         return -1;
     }
 
-    // 模块尺寸
+    // 模块尺寸，
     float half_size = 0.5f;
 
     std::vector<float> b_vertices(27); // 9*3=27
@@ -324,19 +182,6 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(shaderProgram);
-
-        glm::mat4 projection = glm::perspective(glm::radians(camera.zoom), 800.0f / 600.0f, 0.1f, 100.0f);
-        glm::mat4 view = camera.getViewMatrix();
-        glm::mat4 model = glm::mat4(1.0f);
-
-        unsigned int modelLoc = glGetUniformLocation(shaderProgram, "model");
-        unsigned int viewLoc = glGetUniformLocation(shaderProgram, "view");
-        unsigned int projectionLoc = glGetUniformLocation(shaderProgram, "projection");
-
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
-
         glBindVertexArray(mesh.getVAO()); // 绑定 VAO
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.getEBO());                              // 绑定第一个索引缓冲区
         glDrawElements(GL_TRIANGLE_FAN, mesh.getIndicesCount(), GL_UNSIGNED_INT, 0); // 绘制三角形
