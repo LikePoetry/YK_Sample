@@ -11,6 +11,10 @@ class CTERRAIN
     protected:
     STRN_HEIGHT_DATA m_heightData; // the height data
 
+
+    int m_iVertsPerFrame; //stat variables
+    int m_iTrisPerFrame;
+
     bool MakeTerrainFault(int iSize,int iIterations,int iMinDelta,int iMaxDelta,float fFilter);
     
     void NormalizeTerrain(float* fpHeightData);
