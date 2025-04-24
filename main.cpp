@@ -8,27 +8,50 @@
 #include "terrain.h"
 #include "geomipmapping.h"
 
-
 class Mesh
 {
 public:
     Mesh(std::vector<float> vertices, std::vector<unsigned int> indices)
     {
+        Init(vertices, indices);
+    }
+
+    void Init(std::vector<float> vertices, std::vector<unsigned int> indices)
+    {
+        // this->vertices = vertices;
+        // this->indices = indices;
+        // indices_count = indices.size();
+        // // 生成 VAO、VBO 和 EBO
+
+        // glGenVertexArrays(1, &VAO);
+        // glGenBuffers(1, &VBO);
+        // glGenBuffers(1, &EBO);
+
+        // glBindVertexArray(VAO);
+        // glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        // glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
+
+        // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        // glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(float) * indices.size(), indices.data(), GL_STATIC_DRAW);
+
+        // glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+        // glEnableVertexAttribArray(0);
+
+        // glBindBuffer(GL_ARRAY_BUFFER, 0);
+        // glBindVertexArray(0);
+    }
+
+    void Init_VertexBuffer(std::vector<float> vertices)
+    {
         this->vertices = vertices;
-        this->indices = indices;
-        indices_count = indices.size();
-        // 生成 VAO、VBO 和 EBO
+        // 生成 VAO、VBO
 
         glGenVertexArrays(1, &VAO);
         glGenBuffers(1, &VBO);
-        glGenBuffers(1, &EBO);
 
         glBindVertexArray(VAO);
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertices.size(), vertices.data(), GL_STATIC_DRAW);
-
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(float) * indices.size(), indices.data(), GL_STATIC_DRAW);
 
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
         glEnableVertexAttribArray(0);
@@ -37,22 +60,83 @@ public:
         glBindVertexArray(0);
     }
 
+    void Add_IndexBuffer(std::vector<unsigned int> indices)
+    {
+        this->vertices = vertices;
+        indices_count = indices.size();
+        // 生成 VAO、VBO 和 EBO
+        unsigned int EBO;
+        glGenBuffers(1, &EBO);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(float) * indices.size(), indices.data(), GL_STATIC_DRAW);
+        EBOS.push_back(EBO);
+    }
+
+    Mesh(float CX, float CY, int PatchSize)
+    {
+        std::vector<float> patch_vertices;
+        std::vector<unsigned int> patch_indices;
+
+        int iPatchCount = PatchSize / 2;
+        int iLOD = 0;
+        int iDivisor = PatchSize - 1;
+        while (iDivisor > 2)
+        {
+            iDivisor = iDivisor >> 1;
+            iLOD++;
+        }
+        for (int j = 0; j < PatchSize; j++)
+        {
+            for (int i = 0; i < PatchSize; i++)
+            {
+                patch_vertices.push_back(CX + i);
+                patch_vertices.push_back(CY + j);
+                patch_vertices.push_back(0.0f); // Z 坐标为 0
+            }
+        }
+        Init_VertexBuffer(patch_vertices);
+        // 生成索引缓冲区
+        // lod=0; 时;
+        for (size_t i = 0; i < iPatchCount; i++)
+        {
+            for (size_t j = 0; j < iPatchCount; j++)
+            {
+                int step = 1;
+                patch_indices.clear();
+                // Render Fan;
+                patch_indices.push_back((j * (step * 2) + 1 * step) * PatchSize + (i * (step * 2) + 1 * step));
+                patch_indices.push_back((j * (step * 2) + 2 * step) * PatchSize + i * (step * 2));
+                patch_indices.push_back((j * (step * 2) + 1 * step) * PatchSize + i * (step * 2));
+                patch_indices.push_back((j * (step * 2)) * PatchSize + i * (step * 2));
+                patch_indices.push_back((j * (step * 2)) * PatchSize + (i * (step * 2) + 1 * step));
+                patch_indices.push_back((j * (step * 2)) * PatchSize + (i * (step * 2) + 2 * step));
+
+                patch_indices.push_back((j * (step * 2) + 1 * step) * PatchSize + (i * (step * 2) + 2 * step));
+                patch_indices.push_back((j * (step * 2) + 2 * step) * PatchSize + (i * (step * 2) + 2 * step));
+                patch_indices.push_back((j * (step * 2) + 2 * step) * PatchSize + (i * (step * 2) + 1 * step));
+                patch_indices.push_back((j * (step * 2) + 2 * step) * PatchSize + i * (step * 2));
+                Add_IndexBuffer(patch_indices);
+            }
+        }
+    }
+
     ~Mesh()
     {
         glDeleteVertexArrays(1, &VAO);
         glDeleteBuffers(1, &VBO);
-        glDeleteBuffers(1, &EBO);
     }
 
     unsigned int getVAO() const { return VAO; }
-    unsigned int getEBO() const { return EBO; }
+    std::vector<unsigned int> getEBOS() const { return EBOS; }
     int getIndicesCount() const { return indices_count; }
 
 private:
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
     int indices_count;
-    unsigned int VAO, VBO, EBO;
+    unsigned int VAO, VBO;
+
+    std::vector<unsigned int> EBOS;
 };
 
 // 顶点着色器
@@ -129,8 +213,8 @@ public:
         zoom -= yOffset;
         if (zoom < 1.0f)
             zoom = 1.0f;
-        if (zoom > 100.0f)
-            zoom = 100.0f;
+        if (zoom > 500.0f)
+            zoom = 500.0f;
     }
 
 private:
@@ -206,16 +290,15 @@ void framebufferSizeCallback(GLFWwindow *window, int width, int height)
 // 高度图分辨率
 int m_iSize; // the size of the heightmap, must be a power of two
 
-
 int main()
 {
 
-    CGEOMIPMAPPING terrain;
-    terrain.m_iSize=257;
+    // CGEOMIPMAPPING terrain;
+    // terrain.m_iSize=257;
 
-    terrain.Init(17);
-    
-    terrain.Render();
+    // terrain.Init(17);
+
+    // terrain.Render();
 
     // 初始化 GLFW
     if (!glfwInit())
@@ -241,61 +324,27 @@ int main()
     glfwSetCursorPosCallback(window, mouseCallback);
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetScrollCallback(window, scrollCallback);
-
+    glfwSetKeyCallback(window, [](GLFWwindow *window, int key, int scancode, int action, int mods) 
+    {
+        if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+            glfwSetWindowShouldClose(window, true);
+        if (key == GLFW_KEY_W)
+            camera.position += camera.front * camera.speed * 0.1f;
+        if (key == GLFW_KEY_S)
+            camera.position -= camera.front * camera.speed * 0.1f;
+        if (key == GLFW_KEY_A)
+            camera.position -= camera.right * camera.speed * 0.1f;
+        if (key == GLFW_KEY_D)
+            camera.position += camera.right * camera.speed * 0.1f;   
+    });
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
         std::cerr << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
 
-    // 模块尺寸
-    float half_size = 0.5f;
-
-    std::vector<float> b_vertices(27); // 9*3=27
-    float offsetX = 0.0f;
-    float offsetY = 0.0f;
-
-    b_vertices[0] = offsetX;
-    b_vertices[1] = offsetY;
-    b_vertices[2] = 0.0f;
-    b_vertices[3] = offsetX - half_size;
-    b_vertices[4] = offsetY - half_size;
-    b_vertices[5] = 0.0f;
-    b_vertices[6] = offsetX - half_size;
-    b_vertices[7] = offsetY;
-    b_vertices[8] = 0.0f;
-    b_vertices[9] = offsetX - half_size;
-    b_vertices[10] = offsetY + half_size;
-    b_vertices[11] = 0.0f;
-    b_vertices[12] = offsetX;
-    b_vertices[13] = offsetY + half_size;
-    b_vertices[14] = 0.0f;
-    b_vertices[15] = offsetX + half_size;
-    b_vertices[16] = offsetY + half_size;
-    b_vertices[17] = 0.0f;
-    b_vertices[18] = offsetX + half_size;
-    b_vertices[19] = offsetY;
-    b_vertices[20] = 0.0f;
-    b_vertices[21] = offsetX + half_size;
-    b_vertices[22] = offsetY - half_size;
-    b_vertices[23] = 0.0f;
-    b_vertices[24] = offsetX;
-    b_vertices[25] = offsetY - half_size;
-    b_vertices[26] = 0.0f;
-
-    std::vector<unsigned int> b_indices(10); // 9个索引
-    b_indices[0] = 0;
-    b_indices[1] = 1;
-    b_indices[2] = 2;
-    b_indices[3] = 3;
-    b_indices[4] = 4;
-    b_indices[5] = 5;
-    b_indices[6] = 6;
-    b_indices[7] = 7;
-    b_indices[8] = 8;
-    b_indices[9] = 1; // 关闭环
-
-    Mesh mesh(b_vertices, b_indices);
+    // Mesh mesh(b_vertices, b_indices);
+    Mesh mesh(0.0f, 0.0f, 33);
 
     // 创建和编译着色器
     unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -337,9 +386,14 @@ int main()
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
-        glBindVertexArray(mesh.getVAO()); // 绑定 VAO
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.getEBO());                              // 绑定第一个索引缓冲区
-        glDrawElements(GL_TRIANGLE_FAN, mesh.getIndicesCount(), GL_UNSIGNED_INT, 0); // 绘制三角形
+        glBindVertexArray(mesh.getVAO());
+
+        std::vector<unsigned int> EBOS = mesh.getEBOS();
+        for (size_t i = 0; i < EBOS.size(); i++)
+        {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBOS[i]);                              // 绑定第一个索引缓冲区
+            glDrawElements(GL_TRIANGLE_FAN, mesh.getIndicesCount(), GL_UNSIGNED_INT, 0); // 绘制三角形
+        }
 
         glBindVertexArray(0);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0); // 解绑索引缓冲区
