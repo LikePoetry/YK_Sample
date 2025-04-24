@@ -8,6 +8,206 @@
 #include "terrain.h"
 #include "geomipmapping.h"
 
+struct LandPatch
+{
+    unsigned int VAO; // 顶点数组对象
+    float *vertices;  // 补丁顶点信息;
+    int iLOD;         // 当前补丁应该使用的等级，与相机距离有关
+    float fDistance;  // 距离相机的距离
+    float ix;
+    float iy;
+};
+
+struct LandPatchIndex
+{
+    unsigned int *indices; // 衍生的地形补丁索引
+    int indices_count;     // 衍生的地形补丁索引数量
+    int iLOD;              // 当前补丁应该使用的等级，与相机距离有关
+};
+
+class LandScapeMap
+{
+private:
+    LandPatch *LandPatches;           // 衍生的地形补丁
+    LandPatchIndex *LandPatchIndices; // 衍生的地形补丁索引
+    int iPatchSize;                   // 衍生的地形大小
+    int iNumPatchesPerSide;           // 每边的补丁数量
+    int iMaxLOD;                      // 细节等级
+
+public:
+    void init()
+    {
+        int iLOD = 0;
+        int iDivisor = iPatchSize - 1;
+        while (iDivisor > 2)
+        {
+            iDivisor = iDivisor >> 1;
+            iLOD++;
+        }
+        iMaxLOD = iLOD;
+        int half = iPatchSize / 2;
+        // 计算顶点数量
+        for (int32_t y = 0; y < iNumPatchesPerSide; y++)
+        {
+            for (int32_t x = 0; x < iNumPatchesPerSide; x++)
+            {
+                LandPatches[y * iNumPatchesPerSide + x].iLOD = iMaxLOD;
+                LandPatches[y * iNumPatchesPerSide + x].fDistance = 0.0f;
+                LandPatches[y * iNumPatchesPerSide + x].vertices = new float[iPatchSize * iPatchSize * 3];
+                // 计算补丁的顶点坐标
+                for (int32_t j = 0; j < iPatchSize; j++)
+                {
+                    for (int32_t i = 0; i < iPatchSize; i++)
+                    {
+                        // 坐标 x 为 y*iNumPatchesPerSide*iPatchSize
+                        LandPatches[y * iNumPatchesPerSide + x].vertices[j * iPatchSize * 3 + i * 3] = x * (iPatchSize - 1) + i;
+                        LandPatches[y * iNumPatchesPerSide + x].vertices[j * iPatchSize * 3 + i * 3 + 1] = y * (iPatchSize - 1) + j;
+                        LandPatches[y * iNumPatchesPerSide + x].vertices[j * iPatchSize * 3 + i * 3 + 2] = 0.0f; // Z 坐标为 0
+                        // std::cout << "vertices x:" << x * (iPatchSize - 1) + i << ", y:" << y * (iPatchSize - 1) + j << std::endl;
+                    }
+                }
+                LandPatches[y * iNumPatchesPerSide + x].ix = LandPatches[y * iNumPatchesPerSide + x].vertices[(half * iPatchSize + half) * 3];
+                LandPatches[y * iNumPatchesPerSide + x].iy = LandPatches[y * iNumPatchesPerSide + x].vertices[(half * iPatchSize + half) * 3 + 1];
+
+                unsigned int VAO, VBO;
+                // 生成 VAO、VBO
+                glGenVertexArrays(1, &VAO);
+                glGenBuffers(1, &VBO);
+
+                glBindVertexArray(VAO);
+                glBindBuffer(GL_ARRAY_BUFFER, VBO);
+                glBufferData(GL_ARRAY_BUFFER, sizeof(float) * iPatchSize * iPatchSize * 3, LandPatches[y * iNumPatchesPerSide + x].vertices, GL_STATIC_DRAW);
+
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+                glEnableVertexAttribArray(0);
+
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                glBindVertexArray(0);
+                LandPatches[y * iNumPatchesPerSide + x].VAO = VAO; // 保存 VAO
+            }
+        }
+
+        LandPatchIndices = new LandPatchIndex[iMaxLOD];
+        for (int32_t c_lod = 0; c_lod <= iMaxLOD; c_lod++)
+        {
+            int ebo_per_patch = (iPatchSize - 1);
+            int step = 1;
+            int lod = c_lod;
+            while (lod > -1)
+            {
+                lod--;
+                ebo_per_patch = ebo_per_patch >> 1;
+                step = step << 1;
+            }
+            step = step >> 1;
+
+            LandPatchIndices[c_lod].indices_count = ebo_per_patch * ebo_per_patch;
+            LandPatchIndices[c_lod].indices = new unsigned int[ebo_per_patch * ebo_per_patch];
+            LandPatchIndices[c_lod].iLOD = c_lod;
+
+            unsigned int *indices = new unsigned int[10];
+            // 构建顶点索引;
+            for (int32_t j = 0; j < ebo_per_patch; j++)
+            {
+                for (int32_t i = 0; i < ebo_per_patch; i++)
+                {
+                    indices[0] = (j * (step * 2) + 1 * step) * iPatchSize + (i * (step * 2) + 1 * step);
+                    indices[1] = (j * (step * 2) + 2 * step) * iPatchSize + i * (step * 2);
+                    indices[2] = (j * (step * 2) + 1 * step) * iPatchSize + i * (step * 2);
+                    indices[3] = (j * (step * 2)) * iPatchSize + i * (step * 2);
+                    indices[4] = ((j * (step * 2)) * iPatchSize + (i * (step * 2) + 1 * step));
+                    indices[5] = ((j * (step * 2)) * iPatchSize + (i * (step * 2) + 2 * step));
+                    indices[6] = ((j * (step * 2) + 1 * step) * iPatchSize + (i * (step * 2) + 2 * step));
+                    indices[7] = ((j * (step * 2) + 2 * step) * iPatchSize + (i * (step * 2) + 2 * step));
+                    indices[8] = ((j * (step * 2) + 2 * step) * iPatchSize + (i * (step * 2) + 1 * step));
+                    indices[9] = ((j * (step * 2) + 2 * step) * iPatchSize + i * (step * 2));
+
+                    // std::cout << "indices " << indices[0] << ", " << indices[1] << ", " << indices[2] << ", " << indices[3] << ", " << indices[4] << ", " << indices[5] << ", " << indices[6] << ", " << indices[7] << ", " << indices[8] << ", " << indices[9] << std::endl;
+                    //  生成索引缓冲区
+                    unsigned int EBO;
+                    glGenBuffers(1, &EBO);
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+                    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * 10, indices, GL_STATIC_DRAW);
+                    LandPatchIndices[c_lod].indices[j * ebo_per_patch + i] = EBO; // 保存索引缓冲区
+                }
+            }
+            delete[] indices; // 释放索引缓冲区
+        }
+    }
+
+    void render(glm::vec3 eye_position, glm::vec3 target)
+    {
+        // float fDistance = 0.0f;                                  // 平均距离，
+        // float min_distance = std::numeric_limits<double>::max(); // 距离最小值
+        // float max_distance = std::numeric_limits<double>::min(); // 距离最大值
+        // for (int32_t y = 0; y < iNumPatchesPerSide; y++)
+        // {
+        //     for (int32_t x = 0; x < iNumPatchesPerSide; x++)
+        //     {
+        //         float d = glm::distance(eye_position, glm::vec3(LandPatches[y * iNumPatchesPerSide + x].ix, LandPatches[y * iNumPatchesPerSide + x].iy, 0.0f));
+        //         LandPatches[y * iNumPatchesPerSide + x].fDistance = d;
+        //         fDistance += d;
+        //         if (d < min_distance)
+        //         {
+        //             min_distance = d;
+        //         }
+        //         if (d > max_distance)
+        //         {
+        //             max_distance = d;
+        //         }
+        //     }
+        // }
+        // fDistance /= (iNumPatchesPerSide * iNumPatchesPerSide);
+        // std::cout << "average distance:" << fDistance << std::endl;
+        // std::cout << "min distance:" << min_distance << std::endl;
+        // std::cout << "max distance:" << max_distance << std::endl;
+
+        // float distance_sep = (max_distance - min_distance) / (iMaxLOD + 1);
+
+        for (int32_t y = 0; y < iNumPatchesPerSide; y++)
+        {
+            for (int32_t x = 0; x < iNumPatchesPerSide; x++)
+            {
+                // 绑定 VAO
+                glBindVertexArray(LandPatches[y * iNumPatchesPerSide + x].VAO);
+                // 绘制补丁
+
+                float d = glm::distance(eye_position, glm::vec3(LandPatches[y * iNumPatchesPerSide + x].ix, LandPatches[y * iNumPatchesPerSide + x].iy, 0.0f));
+
+                float targetDistance = glm::distance(target, glm::vec3(LandPatches[y * iNumPatchesPerSide + x].ix, LandPatches[y * iNumPatchesPerSide + x].iy, 0.0f));
+
+                LandPatches[y * iNumPatchesPerSide + x].fDistance = d;
+                int lod = targetDistance / 1000.0f;
+                std::cout << "lod:" << lod << std::endl;
+                if (lod > iMaxLOD)
+                {
+                    lod = iMaxLOD;
+                }
+                LandPatches[y * iNumPatchesPerSide + x].iLOD = lod;
+                int size = LandPatchIndices[lod].indices_count;
+                for (int32_t i = 0; i < size; i++)
+                {
+                    // 绑定索引缓冲区
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, LandPatchIndices[lod].indices[i]);
+                    // 绘制补丁
+                    glDrawElements(GL_TRIANGLE_FAN, 10, GL_UNSIGNED_INT, 0);
+                }
+            }
+        }
+    }
+
+    int m_iSize;
+
+public:
+    LandScapeMap(int m_iSize, int iPatchSize)
+    {
+        this->iPatchSize = iPatchSize;
+        this->m_iSize = m_iSize;
+        iNumPatchesPerSide = m_iSize / (iPatchSize - 1);
+        LandPatches = new LandPatch[iNumPatchesPerSide * iNumPatchesPerSide];
+    }
+};
+
 class Mesh
 {
 public:
@@ -279,7 +479,9 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
 // 鼠标滚轮回调函数
 void scrollCallback(GLFWwindow *window, double xOffset, double yOffset)
 {
-    camera.processMouseScroll(static_cast<float>(yOffset));
+    // 根据滚轮的方向调整相机位置
+    float cameraSpeed = static_cast<float>(yOffset) * 0.5f; // 调整速度
+    camera.position += camera.front * cameraSpeed;
 }
 
 void framebufferSizeCallback(GLFWwindow *window, int width, int height)
@@ -324,19 +526,22 @@ int main()
     glfwSetCursorPosCallback(window, mouseCallback);
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetScrollCallback(window, scrollCallback);
-    glfwSetKeyCallback(window, [](GLFWwindow *window, int key, int scancode, int action, int mods) 
-    {
+    glfwSetKeyCallback(window, [](GLFWwindow *window, int key, int scancode, int action, int mods)
+                       {
         if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
             glfwSetWindowShouldClose(window, true);
+        if (key == GLFW_KEY_Q)
+            camera.position += camera.up * camera.speed * 0.5f; 
+        if (key == GLFW_KEY_E)
+            camera.position -= camera.up * camera.speed * 0.5f;
         if (key == GLFW_KEY_W)
-            camera.position += camera.front * camera.speed * 0.1f;
+            camera.position += camera.front * camera.speed * 0.5f;
         if (key == GLFW_KEY_S)
-            camera.position -= camera.front * camera.speed * 0.1f;
+            camera.position -= camera.front * camera.speed * 0.5f;
         if (key == GLFW_KEY_A)
-            camera.position -= camera.right * camera.speed * 0.1f;
+            camera.position -= camera.right * camera.speed * 0.5f;
         if (key == GLFW_KEY_D)
-            camera.position += camera.right * camera.speed * 0.1f;   
-    });
+            camera.position += camera.right * camera.speed * 0.5f; });
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
         std::cerr << "Failed to initialize GLAD" << std::endl;
@@ -344,7 +549,8 @@ int main()
     }
 
     // Mesh mesh(b_vertices, b_indices);
-    Mesh mesh(0.0f, 0.0f, 33);
+    LandScapeMap landScapeMap(8193, 1025);
+    landScapeMap.init();
 
     // 创建和编译着色器
     unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -374,7 +580,7 @@ int main()
 
         glUseProgram(shaderProgram);
 
-        glm::mat4 projection = glm::perspective(glm::radians(camera.zoom), 800.0f / 600.0f, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.zoom), 800.0f / 600.0f, 0.1f, 10000.0f);
         glm::mat4 view = camera.getViewMatrix();
         glm::mat4 model = glm::mat4(1.0f);
 
@@ -385,15 +591,17 @@ int main()
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
+        float l = camera.position.z / camera.front.z;
+        landScapeMap.render(camera.position, camera.position - l * camera.front);
 
-        glBindVertexArray(mesh.getVAO());
+        // glBindVertexArray(mesh.getVAO());
 
-        std::vector<unsigned int> EBOS = mesh.getEBOS();
-        for (size_t i = 0; i < EBOS.size(); i++)
-        {
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBOS[i]);                              // 绑定第一个索引缓冲区
-            glDrawElements(GL_TRIANGLE_FAN, mesh.getIndicesCount(), GL_UNSIGNED_INT, 0); // 绘制三角形
-        }
+        // std::vector<unsigned int> EBOS = mesh.getEBOS();
+        // for (size_t i = 0; i < EBOS.size(); i++)
+        // {
+        //     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBOS[i]);                              // 绑定第一个索引缓冲区
+        //     glDrawElements(GL_TRIANGLE_FAN, mesh.getIndicesCount(), GL_UNSIGNED_INT, 0); // 绘制三角形
+        // }
 
         glBindVertexArray(0);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0); // 解绑索引缓冲区
