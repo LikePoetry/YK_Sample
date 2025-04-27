@@ -8,6 +8,68 @@
 #include "terrain.h"
 #include "geomipmapping.h"
 
+#include "tiffio.h"
+
+class HeightMap
+{
+public:
+    HeightMap(const char *filename)
+    {
+        TIFF *tif = TIFFOpen(filename, "r");
+        if (tif == NULL)
+        {
+            std::cerr << "Error opening TIFF file: " << filename << std::endl;
+            return;
+        }
+        uint16_t bitsPerSample;
+        TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &Width);
+        TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &Height);
+        TIFFGetField(tif, TIFFTAG_BITSPERSAMPLE, &bitsPerSample);
+
+        HeightData.resize(Width * Height);
+        if (bitsPerSample == 32)
+        {
+            float *buf = (float *)_TIFFmalloc(Width * sizeof(float));
+            for (uint32_t row = 0; row < Height; row++)
+            {
+                TIFFReadScanline(tif, buf, row);
+                // 示例：打印第一行前5个像素
+                for (uint32_t col = 0; col < Width; col++)
+                {
+                    // 处理每个像素的浮点值
+                    HeightData[row * Width + col] = buf[col];
+                }
+            }
+            _TIFFfree(buf);
+        }
+        else
+        {
+            printf("不支持位深: %u\n", bitsPerSample);
+        }
+
+        TIFFClose(tif);
+    }
+
+    ~HeightMap()
+    {
+        HeightData.clear();
+    }
+
+    float getHeight(int x, int y)
+    {
+        if (x < 0 || x >= Width || y < 0 || y >= Height)
+        {
+            return 0.0f; // 返回默认高度
+        }
+        return HeightData[y * Width + x];
+    }
+
+private:
+    uint32_t Width;
+    uint32_t Height;
+    std::vector<float> HeightData;
+};
+
 struct LandPatch
 {
     unsigned int VAO; // 顶点数组对象
@@ -16,6 +78,10 @@ struct LandPatch
     float fDistance;  // 距离相机的距离
     float ix;
     float iy;
+    float imin_x;
+    float imin_y;
+    float imax_x;
+    float imax_y;
 };
 
 struct LandPatchIndex
@@ -37,6 +103,10 @@ private:
 public:
     void init()
     {
+
+        HeightMap heightMap("heightmap.tif");
+        // 读取高度图数据
+
         int iLOD = 0;
         int iDivisor = iPatchSize - 1;
         while (iDivisor > 2)
@@ -54,20 +124,48 @@ public:
                 LandPatches[y * iNumPatchesPerSide + x].iLOD = iMaxLOD;
                 LandPatches[y * iNumPatchesPerSide + x].fDistance = 0.0f;
                 LandPatches[y * iNumPatchesPerSide + x].vertices = new float[iPatchSize * iPatchSize * 3];
+                float i_minx = std::numeric_limits<float>::max();
+                float i_miny = std::numeric_limits<float>::max();
+                float i_maxx = std::numeric_limits<float>::min();
+                float i_maxy = std::numeric_limits<float>::min();
+                float dx = 0;
+                float dy = 0;
                 // 计算补丁的顶点坐标
                 for (int32_t j = 0; j < iPatchSize; j++)
                 {
                     for (int32_t i = 0; i < iPatchSize; i++)
                     {
+                        dx = x * (iPatchSize - 1) + i;
+                        dy = y * (iPatchSize - 1) + j;
                         // 坐标 x 为 y*iNumPatchesPerSide*iPatchSize
-                        LandPatches[y * iNumPatchesPerSide + x].vertices[j * iPatchSize * 3 + i * 3] = x * (iPatchSize - 1) + i;
-                        LandPatches[y * iNumPatchesPerSide + x].vertices[j * iPatchSize * 3 + i * 3 + 1] = y * (iPatchSize - 1) + j;
-                        LandPatches[y * iNumPatchesPerSide + x].vertices[j * iPatchSize * 3 + i * 3 + 2] = 0.0f; // Z 坐标为 0
+                        LandPatches[y * iNumPatchesPerSide + x].vertices[j * iPatchSize * 3 + i * 3] = dx;
+                        LandPatches[y * iNumPatchesPerSide + x].vertices[j * iPatchSize * 3 + i * 3 + 1] = dy;
+                        LandPatches[y * iNumPatchesPerSide + x].vertices[j * iPatchSize * 3 + i * 3 + 2] = 4000 * heightMap.getHeight(dx, dy); // heightMap.getHeight(dx, dy);
                         // std::cout << "vertices x:" << x * (iPatchSize - 1) + i << ", y:" << y * (iPatchSize - 1) + j << std::endl;
+                        if (dx < i_minx)
+                        {
+                            i_minx = dx;
+                        }
+                        if (dy < i_miny)
+                        {
+                            i_miny = dy;
+                        }
+                        if (dx > i_maxx)
+                        {
+                            i_maxx = dx;
+                        }
+                        if (dy > i_maxy)
+                        {
+                            i_maxy = dy;
+                        }
                     }
                 }
                 LandPatches[y * iNumPatchesPerSide + x].ix = LandPatches[y * iNumPatchesPerSide + x].vertices[(half * iPatchSize + half) * 3];
                 LandPatches[y * iNumPatchesPerSide + x].iy = LandPatches[y * iNumPatchesPerSide + x].vertices[(half * iPatchSize + half) * 3 + 1];
+                LandPatches[y * iNumPatchesPerSide + x].imin_x = i_minx;
+                LandPatches[y * iNumPatchesPerSide + x].imin_y = i_miny;
+                LandPatches[y * iNumPatchesPerSide + x].imax_x = i_maxx;
+                LandPatches[y * iNumPatchesPerSide + x].imax_y = i_maxy;
 
                 unsigned int VAO, VBO;
                 // 生成 VAO、VBO
@@ -135,7 +233,7 @@ public:
         }
     }
 
-    void render(glm::vec3 eye_position, glm::vec3 target)
+    void render(glm::vec3 eye_position, glm::vec3 target = glm::vec3(0, 0, 0), float resolution = 0)
     {
         // float fDistance = 0.0f;                                  // 平均距离，
         // float min_distance = std::numeric_limits<double>::max(); // 距离最小值
@@ -164,6 +262,15 @@ public:
 
         // float distance_sep = (max_distance - min_distance) / (iMaxLOD + 1);
 
+        // 初始 Lod。中间区域最小 lod;
+        // int i_lod = 0;
+        // int i_ = 0.02 / resolution;
+        // while (i_ > 1)
+        // {
+        //     i_ = i_ >> 1;
+        //     i_lod++;
+        // }
+
         for (int32_t y = 0; y < iNumPatchesPerSide; y++)
         {
             for (int32_t x = 0; x < iNumPatchesPerSide; x++)
@@ -172,17 +279,25 @@ public:
                 glBindVertexArray(LandPatches[y * iNumPatchesPerSide + x].VAO);
                 // 绘制补丁
 
-                float d = glm::distance(eye_position, glm::vec3(LandPatches[y * iNumPatchesPerSide + x].ix, LandPatches[y * iNumPatchesPerSide + x].iy, 0.0f));
+                float d = glm::distance(glm::vec3(eye_position.x, eye_position.y, 0), glm::vec3(LandPatches[y * iNumPatchesPerSide + x].ix, LandPatches[y * iNumPatchesPerSide + x].iy, 0.0f));
+                // float targetDistance = glm::distance(target, glm::vec3(LandPatches[y * iNumPatchesPerSide + x].ix, LandPatches[y * iNumPatchesPerSide + x].iy, 0.0f));
+                // LandPatches[y * iNumPatchesPerSide + x].fDistance = d;
+                // float lod_distance = d * resolution; // 计算当前补丁的距离
 
-                float targetDistance = glm::distance(target, glm::vec3(LandPatches[y * iNumPatchesPerSide + x].ix, LandPatches[y * iNumPatchesPerSide + x].iy, 0.0f));
+                // if (lod_distance > 2.0f)
+                // {
+                //     continue;
+                // }
+                // int lod = (d * resolution) / 0.5 + i_lod;
+                int lod =  d / 300;
 
-                LandPatches[y * iNumPatchesPerSide + x].fDistance = d;
-                int lod = targetDistance / 1000.0f;
-                std::cout << "lod:" << lod << std::endl;
+                // std::cout << "lod:" << lod << std::endl;
                 if (lod > iMaxLOD)
                 {
+                    continue;
                     lod = iMaxLOD;
                 }
+                // int lod=0;
                 LandPatches[y * iNumPatchesPerSide + x].iLOD = lod;
                 int size = LandPatchIndices[lod].indices_count;
                 for (int32_t i = 0; i < size; i++)
@@ -549,7 +664,7 @@ int main()
     }
 
     // Mesh mesh(b_vertices, b_indices);
-    LandScapeMap landScapeMap(8193, 1025);
+    LandScapeMap landScapeMap(8193, 65);
     landScapeMap.init();
 
     // 创建和编译着色器
@@ -591,10 +706,19 @@ int main()
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
-        float l = camera.position.z / camera.front.z;
-        landScapeMap.render(camera.position, camera.position - l * camera.front);
 
-        // glBindVertexArray(mesh.getVAO());
+        // float l = camera.position.z / camera.front.z;
+        // glm::vec4 p_o = projection * view * glm::vec4(0, 0, 0, 1.0f);
+        // p_o = p_o / p_o.w;
+        // glm::vec4 p_o1 = projection * view * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+        // p_o1 = p_o1 / p_o1.w;
+        // // 单位长度像素尺寸，控制像素长度为0.2
+        // float px = glm::distance(glm::vec3(p_o.x, p_o.y, p_o.z), glm::vec3(p_o1.x, p_o1.y, p_o1.z));
+        // std::cout << "distance:" << px << std::endl;
+        // 控制最小网格密度为 0.02
+        landScapeMap.render(camera.position);
+        // landScapeMap.render(camera.position);
+        //  glBindVertexArray(mesh.getVAO());
 
         // std::vector<unsigned int> EBOS = mesh.getEBOS();
         // for (size_t i = 0; i < EBOS.size(); i++)
